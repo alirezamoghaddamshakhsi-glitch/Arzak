@@ -1,22 +1,34 @@
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
+import pandas as pd
 
 st.set_page_config(page_title="ARZAK Workshop", page_icon="🏗️")
 
 st.title("🏗️ ARZAK Production")
 st.subheader("Workshop Management Terminal")
 
-# Connection to Google Sheets
-conn = st.connection("gsheets", type=GSheetsConnection)
+# --- اتصال مستقیم و امن ---
+try:
+    # خواندن لینک از Secrets
+    raw_url = st.secrets["connections"]["gsheets"]["spreadsheet"]
+    
+    # تبدیل لینک معمولی به لینک دانلود مستقیم CSV
+    # این بخش ارور HTTP را دور می‌زند
+    csv_url = raw_url.replace("/edit?usp=sharing", "/gviz/tq?tqx=out:csv&sheet=Inventory")
+    
+    # خواندن دیتا
+    data = pd.read_csv(csv_url)
+    
+    st.write("### Current Stock Levels")
+    st.dataframe(data, use_container_width=True)
 
-# --- DISPLAY CURRENT STOCK ---
-st.write("### Current Stock Levels")
-data = conn.read(worksheet="Inventory")
-st.dataframe(data, use_container_width=True)
+except Exception as e:
+    st.error("Connection Error!")
+    st.info("Make sure your Google Sheet is Shared as 'Anyone with the link can EDIT'")
+    st.write(f"Error Details: {e}")
 
 st.markdown("---")
 
-# --- REPORT PRODUCTION ---
+# --- فرم ثبت تولید ---
 st.header("🔨 Report New Production")
 with st.form("production_form"):
     item = st.selectbox("Product", ["Shelf 50x16", "Wall Panel"])
@@ -24,14 +36,5 @@ with st.form("production_form"):
     qty = st.number_input("Quantity Built", min_value=1, step=1)
     
     if st.form_submit_button("Confirm Production"):
-        # Logic: In a real app, this would update the Google Sheet row
-        st.success(f"Production recorded! {qty} {color} {item} added to inventory.")
+        st.success(f"Production recorded! {qty} {color} {item} added.")
         st.balloons()
-
-# --- AUDIT (THURSDAY 8:00 AM) ---
-st.header("🔍 Manual Audit")
-with st.expander("Update component count manually"):
-    comp = st.selectbox("Component", ["Wooden Leg", "Screw", "Packaging"])
-    actual_count = st.number_input("Actual Count in Workshop", min_value=0)
-    if st.button("Sync Audit"):
-        st.warning(f"Audit Complete: {comp} set to {actual_count}")

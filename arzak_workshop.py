@@ -6,13 +6,14 @@ import json
 st.set_page_config(page_title="ARZAK Workshop", page_icon="🏗️")
 st.title("🏗️ ARZAK Production")
 
-# اتصال اصلاح شده برای رفع ارور Multiple Values
+# رفع ارور Multiple Values با حذف پارامتر تکراری
 try:
     # لود کردن تنظیمات از Secrets
     service_info = json.loads(st.secrets["connections"]["gsheets"]["service_account"])
     
-    # اینجا 'type' را از داخل کد حذف کردیم چون در فایل JSON شما وجود دارد
-    conn = st.connection("gsheets", type=GSheetsConnection, **service_info)
+    # اینجا GSheetsConnection را مستقیماً به عنوان اولین آرگومان می‌فرستیم
+    # و دیگر از کلمه کلیدی type= استفاده نمی‌کنیم
+    conn = st.connection("gsheets", GSheetsConnection, **service_info)
     
     # لود کردن داده‌ها
     df = conn.read(worksheet="Inventory", ttl=0)

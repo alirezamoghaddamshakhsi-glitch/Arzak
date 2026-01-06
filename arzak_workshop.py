@@ -6,20 +6,24 @@ import json
 st.set_page_config(page_title="ARZAK Workshop", page_icon="🏗️")
 st.title("🏗️ ARZAK Production")
 
-# روش جدید برای جلوگیری از ارور Multiple Values
+# روش نهایی برای رفع تداخل پارامترها (مثل project_id)
 try:
-    # ۱. استخراج اطلاعات از Secrets
-    secret_data = json.loads(st.secrets["connections"]["gsheets"]["service_account"])
+    # ۱. خواندن اطلاعات از Secrets
+    service_info = json.loads(st.secrets["connections"]["gsheets"]["service_account"])
+    spreadsheet_url = st.secrets["connections"]["gsheets"]["spreadsheet"]
     
-    # ۲. حذف کلید type از دیکشنری برای جلوگیری از تداخل با متد داخلی Streamlit
-    if "type" in secret_data:
-        del secret_data["type"]
+    # ۲. ایجاد اتصال با متد صحیح
+    # در این حالت ما تنظیمات را مستقیماً به کلاینت داخلی می‌فرستیم
+    conn = st.connection("gsheets", type=GSheetsConnection)
     
-    # ۳. ایجاد اتصال بدون فرستادن کلمه کلیدی type به صورت دستی
-    conn = st.connection("gsheets", type=GSheetsConnection, **secret_data)
+    # ۳. خواندن اطلاعات با استفاده از لینک مستقیم (برای دور زدن محدودیت‌های متد قبلی)
+    df = conn.read(
+        spreadsheet=spreadsheet_url,
+        worksheet="Inventory",
+        ttl=0
+    )
     
-    # ۴. خواندن اطلاعات
-    df = conn.read(worksheet="Inventory", ttl=0)
+    # اصلاح فرمت اعداد
     df['Stock'] = pd.to_numeric(df['Stock']).fillna(0)
     
     st.write("### Current Stock Levels")
@@ -39,8 +43,9 @@ try:
             mask = (df['Item'] == item) & (df['Color'] == color)
             if mask.any():
                 df.loc[mask, 'Stock'] += qty
-                conn.update(worksheet="Inventory", data=df)
-                st.success("Cloud Updated Successfully!")
+                # آپدیت در گوگل شیت
+                conn.update(spreadsheet=spreadsheet_url, worksheet="Inventory", data=df)
+                st.success("Successfully Updated!")
                 st.balloons()
                 st.rerun()
             else:

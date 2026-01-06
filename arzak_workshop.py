@@ -10,22 +10,27 @@ st.subheader("Workshop Management Terminal")
 # ایجاد اتصال به گوگل شیت
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- نمایش موجودی لحظه‌ای ---
-try:
-    # خواندن دیتا از شیت Inventory
-    df = conn.read(worksheet="Inventory", ttl=0) # ttl=0 یعنی همیشه جدیدترین دیتا را بگیر
-    st.write("### Current Stock Levels")
+# تابع کمکی برای خواندن دیتا (برای جلوگیری از گم شدن df)
+def load_data():
+    return conn.read(worksheet="Inventory", ttl=0)
+
+# خواندن دیتای اولیه
+df = load_data()
+
+# --- نمایش موجودی ---
+st.write("### Current Stock Levels")
+if df is not None:
+    # پر کردن مقادیر None با صفر برای جلوگیری از ارور محاسباتی
+    df['Stock'] = df['Stock'].fillna(0)
     st.dataframe(df, use_container_width=True)
-except Exception as e:
-    st.error("Error loading data. Check your Google Sheet name and sharing settings.")
 
 st.markdown("---")
 
 # --- فرم ثبت تولید جدید ---
 st.header("🔨 Report New Production")
 with st.form("production_form"):
-    # گرفتن لیست محصولات از خودِ اکسل (برای داینامیک بودن)
-    items_list = df['Item'].unique().tolist() if 'df' in locals() else ["Shelf 50x16"]
+    # لیست محصولات از ستون Item در اکسل
+    items_list = df['Item'].unique().tolist() if df is not None else ["Shelf 50x16"]
     
     selected_item = st.selectbox("Product", items_list)
     selected_color = st.selectbox("Color", ["White", "Black", "Gray", "Brown"])
@@ -35,18 +40,22 @@ with st.form("production_form"):
 
     if submit_button:
         try:
-            # پیدا کردن ردیف مورد نظر و اضافه کردن تعداد تولید شده به موجودی قبلی
+            # آپدیت ردیف مورد نظر
             mask = (df['Item'] == selected_item) & (df['Color'] == selected_color)
             
             if mask.any():
-                df.loc[mask, 'Stock'] = df.loc[mask, 'Stock'].fillna(0) + qty_produced
-                # آپدیت کردن کل شیت
+                # اضافه کردن به موجودی فعلی
+                df.loc[mask, 'Stock'] = df.loc[mask, 'Stock'].astype(float) + qty_produced
+                
+                # ارسال کل جدول به گوگل شیت
                 conn.update(worksheet="Inventory", data=df)
-                st.success(f"Updated! {qty_produced} units added to {selected_item} ({selected_color}).")
+                st.success(f"Updated! {qty_produced} units added to {selected_item}.")
                 st.balloons()
+                # رفرش کردن دیتا برای نمایش جدید
+                st.rerun()
             else:
-                st.warning("This combination of Item and Color was not found in your Excel. Add it manually first.")
+                st.warning("This Item/Color combination was not found in Excel.")
         except Exception as e:
-            st.error(f"Could not update: {e}")
+            st.error(f"Update failed: {e}")
 
 st.caption("Tip: Refresh page to see updated stock.")

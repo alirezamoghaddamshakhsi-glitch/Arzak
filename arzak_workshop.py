@@ -6,16 +6,16 @@ import json
 st.set_page_config(page_title="ARZAK Workshop", page_icon="🏗️")
 st.title("🏗️ ARZAK Production")
 
-# اتصال امن با استفاده از Service Account
+# اتصال اصلاح شده برای رفع ارور Multiple Values
 try:
-    # پارس کردن متن JSON از Secrets
+    # لود کردن تنظیمات از Secrets
     service_info = json.loads(st.secrets["connections"]["gsheets"]["service_account"])
+    
+    # اینجا 'type' را از داخل کد حذف کردیم چون در فایل JSON شما وجود دارد
     conn = st.connection("gsheets", type=GSheetsConnection, **service_info)
     
-    # خواندن اطلاعات از برگه Inventory
+    # لود کردن داده‌ها
     df = conn.read(worksheet="Inventory", ttl=0)
-    
-    # اصلاح فرمت اعداد
     df['Stock'] = pd.to_numeric(df['Stock']).fillna(0)
     
     st.write("### Current Stock Levels")
@@ -25,25 +25,23 @@ try:
     st.header("🔨 Report New Production")
     
     with st.form("production_form"):
-        # انتخاب کالا و رنگ بر اساس دیتای موجود در اکسل
-        items = df['Item'].unique().tolist()
-        item = st.selectbox("Product", items)
-        colors = df[df['Item'] == item]['Color'].unique().tolist()
-        color = st.selectbox("Color", colors)
+        item_list = df['Item'].unique().tolist()
+        item = st.selectbox("Product", item_list)
+        color_list = df[df['Item'] == item]['Color'].unique().tolist()
+        color = st.selectbox("Color", color_list)
         qty = st.number_input("Quantity Produced", min_value=1, step=1)
         
         if st.form_submit_button("Confirm & Update Cloud"):
             mask = (df['Item'] == item) & (df['Color'] == color)
             if mask.any():
                 df.loc[mask, 'Stock'] += qty
-                # ارسال آپدیت به گوگل شیت
                 conn.update(worksheet="Inventory", data=df)
-                st.success("انبار با موفقیت آپدیت شد!")
+                st.success("Cloud Updated Successfully!")
                 st.balloons()
                 st.rerun()
             else:
-                st.warning("کالا یا رنگ انتخاب شده در جدول یافت نشد.")
+                st.warning("Combination not found in Excel.")
 
 except Exception as e:
     st.error(f"خطا در اتصال: {e}")
-    st.info("نکته: حتماً ایمیل سرویس اکانت را در گوگل شیت Editor کنید.")
+    st.info("نکته: مطمئن شوید متن JSON در Secrets بین سه کوتیشن ''' قرار دارد.")

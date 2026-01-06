@@ -4,62 +4,64 @@ from streamlit_gsheets import GSheetsConnection
 import json
 
 st.set_page_config(page_title="ARZAK Workshop", page_icon="🏗️")
-st.title("🏗️ ARZAK Production")
 
-# رفع خطای Multiple Values برای پارامتر type
+st.title("🏗️ ARZAK Production")
+st.subheader("Workshop Management Terminal")
+
+# --- اتصال فوق‌امن و بدون تداخل ---
 try:
-    # ۱. استخراج تنظیمات از Secrets
-    spreadsheet_url = st.secrets["connections"]["gsheets"]["spreadsheet"]
+    # ۱. خواندن مشخصات از Secrets
+    ss_url = st.secrets["connections"]["gsheets"]["spreadsheet"]
     service_info = json.loads(st.secrets["connections"]["gsheets"]["service_account"])
     
-    # ۲. حذف کلید type از دیکشنری JSON برای جلوگیری از تداخل با متد داخلی Streamlit
+    # ۲. حذف کلید مزاحم برای جلوگیری از ارور Multiple Values
     if "type" in service_info:
         del service_info["type"]
     
-    # ۳. ایجاد اتصال با هویت Service Account
-    # حالا دیگر تداخلی بین type داخل JSON و type تعریف شده در اینجا وجود ندارد
+    # ۳. برقرار اتصال با متد تمیز
     conn = st.connection("gsheets", type=GSheetsConnection, **service_info)
     
-    # ۴. خواندن داده‌ها
-    df = conn.read(spreadsheet=spreadsheet_url, ttl=0)
+    # ۴. خواندن دیتا
+    df = conn.read(spreadsheet=ss_url, ttl=0)
     
-    # تمیزکاری نام ستون‌ها و تبدیل فرمت اعداد
+    # تمیزکاری نام ستون‌ها و اعداد
     df.columns = [str(c).strip() for c in df.columns]
     if 'Stock' in df.columns:
         df['Stock'] = pd.to_numeric(df['Stock'], errors='coerce').fillna(0)
     
-    st.write("### Current Stock Levels")
+    # نمایش جدول
+    st.write("### موجودی فعلی انبار")
     st.dataframe(df, use_container_width=True)
 
     st.markdown("---")
-    st.header("🔨 Report New Production")
-    
+
+    # --- فرم ثبت تولید ---
+    st.header("🔨 ثبت گزارش تولید جدید")
     with st.form("production_form"):
         if 'Item' in df.columns and 'Color' in df.columns:
             items = df['Item'].unique().tolist()
-            selected_item = st.selectbox("Product", items)
+            selected_item = st.selectbox("نام محصول", items)
             
             colors = df[df['Item'] == selected_item]['Color'].unique().tolist()
-            selected_color = st.selectbox("Color", colors)
+            selected_color = st.selectbox("رنگ", colors)
             
-            qty = st.number_input("Quantity Produced", min_value=1, step=1)
+            qty = st.number_input("تعداد تولید شده", min_value=1, step=1)
             
-            if st.form_submit_button("Confirm & Update Cloud"):
+            if st.form_submit_button("تایید و ثبت در سیستم"):
                 mask = (df['Item'] == selected_item) & (df['Color'] == selected_color)
                 if mask.any():
                     df.loc[mask, 'Stock'] += qty
                     
-                    # ۵. ارسال آپدیت به گوگل شیت
-                    conn.update(spreadsheet=spreadsheet_url, data=df)
-                    
-                    st.success(f"موجودی {selected_item} با موفقیت به‌روزرسانی شد.")
+                    # آپدیت نهایی در گوگل شیت
+                    conn.update(spreadsheet=ss_url, data=df)
+                    st.success(f"موفقیت‌آمیز: {qty} عدد {selected_item} به انبار اضافه شد.")
                     st.balloons()
                     st.rerun()
                 else:
-                    st.warning("این ترکیب کالا و رنگ یافت نشد.")
+                    st.warning("این کالا در جدول یافت نشد.")
         else:
-            st.error("ستون‌های Item یا Color در اکسل پیدا نشدند.")
+            st.error("خطا: ستون‌های Item یا Color در فایل اکسل پیدا نشدند.")
 
 except Exception as e:
     st.error(f"خطای سیستمی: {e}")
-    st.info("نکته: مطمئن شوید ایمیل سرویس اکانت در گوگل شیت Editor است.")
+    st.info("نکته: اگر ارور 'Permission Denied' گرفتی، یعنی ایمیل سرویس اکانت را در اکسل Share نکردی.")
